@@ -1,240 +1,275 @@
 import * as vscode from 'vscode';
-import ollama from 'ollama';
+import { Ollama } from 'ollama';
+import { getWebViewContent } from './webviewContent';
 
 export function activate(context: vscode.ExtensionContext) {
-    console.log("Ollama VS Code extension is now active!");
+    console.log("Ollama VS Code extension is active!");
 
-    const disposable = vscode.commands.registerCommand('ollama-vscode-chat.start', async () => {
-        const panel = vscode.window.createWebviewPanel(
-            'ollamaChat',
-            'VS Ollama',
-            vscode.ViewColumn.One,
-            { enableScripts: true }
-        );
+    // Instantiate our Sidebar view provider
+    const provider = new OllamaSidebarProvider(context);
 
-        let models: string[] = [];
-        try {
-            const response = await ollama.list();
-            models = response.models.map((m: any) => m.name);
-        } catch (error) {
-            console.error("Error fetching models:", error);
-        }
+    // Register WebviewViewProvider
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+            OllamaSidebarProvider.viewType,
+            provider
+        )
+    );
 
-        panel.webview.html = getWebViewContent(models);
+    // Register commands
+    context.subscriptions.push(
+        vscode.commands.registerCommand('ollama-vscode-chat.start', () => {
+            vscode.commands.executeCommand('workbench.view.extension.ollama-sidebar-container');
+            provider.focus();
+        })
+    );
 
-        panel.webview.onDidReceiveMessage(async (message: any) => {
-            if (message.command === "chat") {
-                const { text, model } = message;
-        
-                // Append user's message
-                // panel.webview.postMessage({ command: "chatResponse", text: "You: " + text, type: "user" });
-        
-                // Create a placeholder AI message (empty for now)
-                const responseId = Date.now(); // Unique ID to track this message
-                panel.webview.postMessage({ command: "startStream", id: responseId, text: model + " is thinking..." });
-        
-                try {
-                    const streamResponse = await ollama.chat({
-                        model: model,
-                        messages: [{ role: "user", content: text }],
-                        stream: true
-                    });
-        
-                    let responseText = "";
-        
-                    for await (const part of streamResponse) {
-                        if (part?.message?.content) {
-                            responseText += part.message.content;
-        
-                            // Update the AI message dynamically
-                            panel.webview.postMessage({ command: "updateStream", id: responseId, text: responseText });
+    context.subscriptions.push(
+        vscode.commands.registerCommand('ollama-vscode-chat.focusSidebar', () => {
+            vscode.commands.executeCommand('workbench.view.extension.ollama-sidebar-container');
+            provider.focus();
+        })
+    );
+
+    // Context menu code actions helper
+    const registerCodeActionCommand = (commandId: string, action: string) => {
+        return vscode.commands.registerCommand(commandId, async () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) {
+                vscode.window.showWarningMessage('Open an editor and select code first.');
+                return;
+            }
+
+            const selection = editor.selection;
+            const text = editor.document.getText(selection);
+
+            if (!text.trim()) {
+                vscode.window.showWarningMessage('Please select some code to analyze.');
+                return;
+            }
+
+            // Bring sidebar container to focus and focus the view
+            await vscode.commands.executeCommand('workbench.view.extension.ollama-sidebar-container');
+            provider.focus();
+
+            // Give the webview a brief moment to load and register the message listener if it was just loaded
+            setTimeout(() => {
+                provider.triggerContextCommand(action, text);
+            }, 300);
+        });
+    };
+
+    context.subscriptions.push(registerCodeActionCommand('ollama-vscode-chat.explainCode', 'explain'));
+    context.subscriptions.push(registerCodeActionCommand('ollama-vscode-chat.findBugs', 'bugs'));
+    context.subscriptions.push(registerCodeActionCommand('ollama-vscode-chat.generateTests', 'tests'));
+    context.subscriptions.push(registerCodeActionCommand('ollama-vscode-chat.documentCode', 'document'));
+}
+
+class OllamaSidebarProvider implements vscode.WebviewViewProvider {
+    public static readonly viewType = 'ollama.chatView';
+    private _view?: vscode.WebviewView;
+
+    constructor(private readonly _context: vscode.ExtensionContext) {}
+
+    public resolveWebviewView(
+        webviewView: vscode.WebviewView,
+        context: vscode.WebviewViewResolveContext,
+        _token: vscode.CancellationToken
+    ) {
+        this._view = webviewView;
+
+        webviewView.webview.options = {
+            enableScripts: true,
+            localResourceRoots: [this._context.extensionUri]
+        };
+
+        // Load the HTML content
+        webviewView.webview.html = getWebViewContent(this._context.extensionUri, webviewView.webview);
+
+        // Set up Webview message listener
+        webviewView.webview.onDidReceiveMessage(async (message) => {
+            // Retrieve latest API settings
+            const config = vscode.workspace.getConfiguration('ollama');
+            const apiUrl = config.get<string>('apiUrl') || 'http://localhost:11434';
+            const client = new Ollama({ host: apiUrl });
+
+            switch (message.command) {
+                case 'checkConnection':
+                    try {
+                        await client.list();
+                        this.postMessage({ command: 'connectionStatus', status: 'online' });
+                    } catch (err) {
+                        this.postMessage({ command: 'connectionStatus', status: 'offline', error: String(err) });
+                    }
+                    break;
+
+                case 'getSettings':
+                    this.postMessage({
+                        command: 'loadSettings',
+                        settings: {
+                            systemPrompt: config.get<string>('systemPrompt'),
+                            temperature: config.get<number>('temperature'),
+                            contextLength: config.get<number>('contextLength')
                         }
+                    });
+                    break;
+
+                case 'saveSettings':
+                    if (message.settings) {
+                        await config.update('systemPrompt', message.settings.systemPrompt, vscode.ConfigurationTarget.Global);
+                        await config.update('temperature', message.settings.temperature, vscode.ConfigurationTarget.Global);
+                        await config.update('contextLength', message.settings.contextLength, vscode.ConfigurationTarget.Global);
                     }
-        
-                    if (!responseText.trim()) {
-                        panel.webview.postMessage({ command: "updateStream", id: responseId, text: "No response received. Please try again." });
+                    break;
+
+                case 'getModels':
+                    try {
+                        const response = await client.list();
+                        this.postMessage({ command: 'modelsList', models: response.models });
+                    } catch (err) {
+                        this.postMessage({ command: 'modelsError', error: String(err) });
                     }
-                } catch (error) {
-                    console.error("Error in chat processing:", error);
-                    panel.webview.postMessage({ command: "updateStream", id: responseId, text: `Error: ${String(error)}` });
+                    break;
+
+                case 'deleteModel':
+                    try {
+                        await client.delete({ model: message.model });
+                        const response = await client.list();
+                        this.postMessage({ command: 'modelsList', models: response.models });
+                        vscode.window.showInformationMessage(`Deleted model: ${message.model}`);
+                    } catch (err) {
+                        vscode.window.showErrorMessage(`Failed to delete model: ${err}`);
+                    }
+                    break;
+
+                case 'pullModel':
+                    try {
+                        vscode.window.showInformationMessage(`Starting pull for model: ${message.model}`);
+                        const pullStream = await client.pull({ model: message.model, stream: true });
+                        
+                        for await (const part of pullStream) {
+                            this.postMessage({
+                                command: 'pullProgress',
+                                model: message.model,
+                                status: part.status,
+                                completed: part.completed,
+                                total: part.total
+                            });
+                        }
+                        this.postMessage({ command: 'pullComplete', model: message.model });
+                    } catch (err) {
+                        this.postMessage({ command: 'pullError', model: message.model, error: String(err) });
+                        vscode.window.showErrorMessage(`Pull failed: ${err}`);
+                    }
+                    break;
+
+                case 'chat': {
+                    const { text, model, history, systemPrompt, temperature, contextLength } = message;
+                    const responseId = Date.now();
+
+                    // Tell webview that streaming is starting
+                    this.postMessage({ command: 'startStream', id: responseId, text: `${model} is processing...` });
+
+                    try {
+                        // Merge system prompt into messages if present
+                        const formattedMessages: any[] = [];
+                        if (systemPrompt && systemPrompt.trim()) {
+                            formattedMessages.push({ role: 'system', content: systemPrompt });
+                        }
+
+                        // Add history context
+                        if (history && history.length > 0) {
+                            formattedMessages.push(...history);
+                        }
+
+                        // Add the final user query
+                        formattedMessages.push({ role: 'user', content: text });
+
+                        const responseStream = await client.chat({
+                            model: model,
+                            messages: formattedMessages,
+                            options: {
+                                temperature: temperature ?? 0.7,
+                                num_ctx: contextLength ?? 4096
+                            },
+                            stream: true
+                        });
+
+                        let responseAccumulator = "";
+                        let stats: any = {};
+                        for await (const chunk of responseStream) {
+                            if (chunk.message?.content) {
+                                responseAccumulator += chunk.message.content;
+                                this.postMessage({ command: 'updateStream', id: responseId, text: responseAccumulator });
+                            }
+                            if (chunk.total_duration || (chunk as any).eval_count) {
+                                stats = {
+                                    totalDuration: chunk.total_duration,
+                                    loadDuration: chunk.load_duration,
+                                    promptEvalCount: chunk.prompt_eval_count,
+                                    evalCount: chunk.eval_count,
+                                    evalDuration: chunk.eval_duration
+                                };
+                            }
+                        }
+
+                        this.postMessage({ command: 'streamComplete', id: responseId, text: responseAccumulator, stats });
+                    } catch (err) {
+                        console.error('Chat error:', err);
+                        this.postMessage({ command: 'updateStream', id: responseId, text: `Error generating response: ${String(err)}` });
+                        this.postMessage({ command: 'streamComplete', id: responseId, text: `Error: ${String(err)}` });
+                    }
+                    break;
                 }
+
+                case 'insertCode': {
+                    const editor = vscode.window.activeTextEditor;
+                    if (editor) {
+                        editor.edit((editBuilder) => {
+                            // Insert code at current cursor position
+                            editBuilder.insert(editor.selection.active, message.code);
+                        });
+                    } else {
+                        vscode.window.showErrorMessage('No active text editor found to insert code.');
+                    }
+                    break;
+                }
+
+                case 'copyToClipboard':
+                    await vscode.env.clipboard.writeText(message.text);
+                    break;
+
+                case 'saveChatHistory':
+                    this._context.workspaceState.update('chatHistory', message.history);
+                    break;
+
+                case 'loadChatHistory':
+                    const savedHistory = this._context.workspaceState.get('chatHistory') || [];
+                    this.postMessage({ command: 'loadChatHistoryResponse', history: savedHistory });
+                    break;
             }
         });
-        
-
-        context.subscriptions.push(panel);
-    });
-
-    context.subscriptions.push(disposable);
-}
-
-function getWebViewContent(models: string[]): string {
-    const modelOptions = models.map(m => `<option value="${m}">${m}</option>`).join('');
-
-    return /*html*/`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-    body { 
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-        background-color: #1e1e1e; 
-        color: #fff; 
-        margin: 0; 
-        padding: 0; 
     }
 
-    .container { 
-        padding: 20px; 
-        display: flex; 
-        flex-direction: column; 
-        gap: 10px; 
-        max-width: 500px; /* Ensures all elements stay aligned */
-        margin: 0 auto; /* Centers the card */
-    }
-
-    h2 { 
-        text-align: center; 
-        color: #61dafb; 
-    }
-
-    select, textarea, button, #response { 
-        width: 100%; 
-        padding: 10px; 
-        border-radius: 5px; 
-        border: none; 
-        font-size: 14px; 
-        background: #333; 
-        color: #fff; 
-        box-sizing: border-box; /* Ensures padding doesn’t affect width */
-    }
-
-    textarea { 
-        resize: vertical; 
-        min-height: 50px; 
-        max-height: 200px; 
-    }
-
-    button { 
-        background: #007acc; 
-        cursor: pointer; 
-    }
-
-    button:hover { 
-        background: #005f99; 
-    }
-
-    #response { 
-        background: #333; 
-        padding: 15px; 
-        border-radius: 5px; 
-        overflow-y: auto; 
-        height: 250px; 
-    }
-
-    .message { 
-        margin: 5px 0; 
-        padding: 8px 12px; 
-        border-radius: 6px; 
-    }
-
-    .user { 
-        background: #007acc; 
-        align-self: flex-end; 
-    }
-
-    .ai { 
-        background: #444; 
-        align-self: flex-start; 
-    }
-</style>
-
-    </head>
-    <body>
-        <div class="container">
-            <h2>Ollama VS Code Chat</h2>
-            <label for="modelSelect">Select Model:</label>
-            <select id="modelSelect">${modelOptions}</select>
-            <textarea id="prompt" rows="3" placeholder="Ask something..."></textarea>
-            <button id="askBtn">Send</button>
-            <div id="response"></div>
-        </div>
-
-        <script>
-            const vscode = acquireVsCodeApi();
-
-            document.getElementById('askBtn').addEventListener('click', () => {
-                const text = document.getElementById('prompt').value.trim();
-                const model = document.getElementById('modelSelect').value;
-                if (text && model) {
-                    appendMessage("You: " + text, "user");
-                    vscode.postMessage({ command: 'chat', text, model });
-                    document.getElementById('prompt').value = "";
-                }
-            });
-
-            function appendMessage(text, type) {
-                const responseBox = document.getElementById('response');
-                const messageElement = document.createElement('div');
-                messageElement.classList.add('message', type);
-                messageElement.textContent = text;
-                responseBox.appendChild(messageElement);
-                responseBox.scrollTop = responseBox.scrollHeight;
-            }
-
-            window.addEventListener("message", function(event) {
-    const { command, text, id, type } = event.data;
-
-    if (command === "chatResponse") {
-        appendMessage(text, type);
-    } else if (command === "startStream") {
-        startStreamingMessage(id, text);
-    } else if (command === "updateStream") {
-        updateStreamingMessage(id, text);
-    }
-});
-
-function appendMessage(text, type) {
-    const responseBox = document.getElementById("response");
-    const messageElement = document.createElement("div");
-    messageElement.classList.add("message", type);
-    messageElement.textContent = text;
-    responseBox.appendChild(messageElement);
-    responseBox.scrollTop = responseBox.scrollHeight;
-}
-
-function startStreamingMessage(id, text) {
-    const responseBox = document.getElementById("response");
-    const newMessage = document.createElement("div");
-    newMessage.id = "message-" + id;
-    newMessage.classList.add("message", "ai");
-    newMessage.textContent = text;
-    responseBox.appendChild(newMessage);
-    responseBox.scrollTop = responseBox.scrollHeight;
-}
-
-function updateStreamingMessage(id, text) {
-            const messageElement = document.getElementById("message-" + id);
-            if (!messageElement) return;
-
-            const codeBlockRegex = /\\\`\\\`\\\`(\\w+)?\\n([\\s\\S]+?)\\\`\\\`\\\`/g;
-            let formattedText = text.replace(codeBlockRegex, (match, lang = "plaintext", code) => {
-                return \`<pre><code class="language-\${lang}">\${escapeHtml(code)}</code></pre>\`;
-            });
-
-            messageElement.innerHTML = formattedText;
-            Prism.highlightAll();
+    public focus() {
+        if (this._view) {
+            this._view.show(true);
         }
+    }
 
-        function escapeHtml(unsafe) {
-            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    public triggerContextCommand(action: string, code: string) {
+        this.postMessage({
+            command: 'triggerCommand',
+            action,
+            code
+        });
+    }
+
+    private postMessage(message: any) {
+        if (this._view) {
+            this._view.webview.postMessage(message);
         }
-        </script>
-    </body>
-    </html>
-    `;
+    }
 }
 
 export function deactivate() {}

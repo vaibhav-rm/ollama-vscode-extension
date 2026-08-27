@@ -1,15 +1,32 @@
 import * as assert from 'assert';
-
-// You can import and use all API from the 'vscode' module
-// as well as import your extension to test it
 import * as vscode from 'vscode';
-// import * as myExtension from '../../extension';
 
-suite('Extension Test Suite', () => {
-	vscode.window.showInformationMessage('Start all tests.');
+suite('Ollama Extension Test Suite', () => {
+    vscode.window.showInformationMessage('Running Ollama Extension Tests...');
 
-	test('Sample test', () => {
-		assert.strictEqual(-1, [1, 2, 3].indexOf(5));
-		assert.strictEqual(-1, [1, 2, 3].indexOf(0));
-	});
+    test('Extension should be present', () => {
+        const extension = vscode.extensions.getExtension('Vaibhavrathod.ollama-vscode-chat');
+        assert.ok(extension, 'Extension should be registered in VS Code');
+    });
+
+    test('All commands should be registered', async () => {
+        const extension = vscode.extensions.getExtension('Vaibhavrathod.ollama-vscode-chat');
+        assert.ok(extension, 'Extension should be registered in VS Code');
+        if (!extension.isActive) {
+            await extension.activate();
+        }
+        const commands = await vscode.commands.getCommands(true);
+        const expectedCommands = [
+            'ollama-vscode-chat.start',
+            'ollama-vscode-chat.focusSidebar',
+            'ollama-vscode-chat.explainCode',
+            'ollama-vscode-chat.findBugs',
+            'ollama-vscode-chat.generateTests',
+            'ollama-vscode-chat.documentCode'
+        ];
+        
+        for (const cmd of expectedCommands) {
+            assert.ok(commands.includes(cmd), `Command ${cmd} should be registered upon activation`);
+        }
+    });
 });

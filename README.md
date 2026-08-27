@@ -1,93 +1,83 @@
-# Ollama VSCode Chat
+# Ollama VSCode Chat 🦙💬
 
-A Visual Studio Code extension that provides a user-friendly GUI for interacting with [Ollama](https://ollama.com), allowing you to select and chat with different local LLMs.
+A premium, feature-rich Visual Studio Code extension that integrates directly with [Ollama](https://ollama.com). It provides a gorgeous sidebar interface for chat, advanced model parameters configuration, visual model downloads, and rich editor context menu integration.
 
-## Features
+![Ollama VSCode Chat](https://i.ibb.co/Kc9hXgSf/image.png)
 
-- Integrated chat interface within VSCode
-- Easily switch between installed LLMs
-- Simple and lightweight, leveraging local models
+---
 
-## Requirements
+## Key Features
 
-To use this extension, you need:
+- 📱 **Sleek Sidebar Chat Panel**: Always-accessible sidebar panel that styled to adapt perfectly to your active VS Code theme (Dark, Light, High Contrast).
+- ⚙️ **Advanced Settings drawer**: Tweak model parameters on the fly—adjust **Temperature**, specify **System Prompts**, and increase **Context length** directly from the UI.
+- 🛠️ **Deep Editor Integration**:
+  - Right-click selection context menu:
+    - **Ollama AI: Explain Code**
+    - **Ollama AI: Find Bugs & Optimize**
+    - **Ollama AI: Generate Unit Tests**
+    - **Ollama AI: Write Documentation**
+  - Instant code insertion: Insert generated code blocks directly into your active text editor cursor position with a single click.
+- 📦 **Visual Model Manager**:
+  - List installed models along with size, parameter counts (e.g. `8B`), and format (`gguf`).
+  - Delete unwanted models with confirmation.
+  - Pull and download new models with a real-time progress bar showing percentage, status, and size updates.
+- 🔄 **Conversation Persistence**: Auto-saves chat history per workspace, allowing you to pick up exactly where you left off.
+- 📊 **Real-Time Performance Metrics**: Displays generation speed (tokens/sec), total response time, and prompt token count below every response.
+- 🟢 **Live Status Indicator**: Visual indicator (pulsing green/red status light) shows if your local Ollama instance is online or offline.
+- ⚡ **Offline-First Resilience**: Robust Markdown and PrismJS syntax highlighting with offline fallbacks so you can code without internet access.
 
-1. **Ollama** installed on your system  
-2. At least one LLM installed via Ollama  
+---
 
-## **Usage**  
-
-### **Open the Ollama Chat Panel**  
-1. Press **`Ctrl + Shift + P`**, then type:  
-
-```sh
- Ollama Chat
-```
-
-2. Select an installed LLM from the dropdown  
-3. Start chatting!  
-
-### **Download New LLMs**  (Not yet implemented)
-To install new models from Ollama directly through VSCode:  
-1. Press **`Ctrl + Shift + P`**, then type:  
-
-```sh
- Ollama Download New Model
-```
-2. Choose a model and download it. 
-
-## Installation
+## Installation & Setup
 
 ### 1. Install Ollama
+Download and run Ollama on your machine:
+- **Windows**: [Download Ollama for Windows](https://ollama.com/download)
+- **macOS / Linux**:
+  ```sh
+  curl -fsSL https://ollama.com/install.sh | sh
+  ```
 
-Ollama is required to run local models. Follow the instructions below to install it:
-
-#### **Linux & macOS**
-Run the following command in your terminal:
-
+### 2. Download a Local Model
+Pull a lightweight model to get started:
 ```sh
-curl -fsSL https://ollama.com/install.sh | sh
+ollama pull deepseek-r1:8b
+# or
+ollama pull llama3.2
 ```
 
-#### **Windows**
-Download and install [Ollama for Windows](https://ollama.com/download).
+### 3. Open the Sidebar Chat
+1. Click the **Ollama AI** icon in the VS Code Activity Bar (on the left side).
+2. Start chatting!
 
-### 2. Install a Small LLM
+---
 
-After installing Ollama, you need at least one model to start chatting. Here are some lightweight models you can try:
+## Advanced Configurations
 
-```sh
-ollama pull deepseek-r1:1.5b
-ollama pull mistral
-ollama pull llama3.2:3b
-```
+Modify settings via `File -> Preferences -> Settings` (or `Ctrl + ,`), searching for `Ollama`:
 
-### 3. Install the Extension
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `ollama.apiUrl` | String | `http://localhost:11434` | The endpoint URL of your Ollama instance (change to support remote servers). |
+| `ollama.systemPrompt` | String | `You are a helpful, expert AI software developer...` | The default system instructions for the LLM behavior. |
+| `ollama.temperature` | Number | `0.7` | Controls randomness (0.0 is deterministic, 1.0 is creative). |
+| `ollama.contextLength` | Integer | `4096` | Maximum token window capacity of the model. |
 
-1. Open **VSCode**  
-2. Go to **Extensions** (`Ctrl+Shift+X`)  
-3. Search for `ollama-vscode-chat`  
-4. Click **Install**  
+---
 
-## Usage
+## Editor Actions & Inline Editor Usage
 
-1. Open the **Ollama Chat** panel in VSCode  
-2. Select an installed LLM from the dropdown  
-3. Start chatting!  
-
-## Screenshots
-
-### Ollama Chat Interface in VSCode
-![Ollama Chat Panel](https://i.ibb.co/Kc9hXgSf/image.png)
-
-### Selecting an LLM
-![Model Selection](https://i.ibb.co/xSm7bjH9/image.png)
-
-## Notes
-
-- Ensure Ollama is running before using the extension  
-- If no models are found, install one using `ollama pull <model-name>`  
+1. **Right-Click Context Menu Actions**:
+   - Open any code file and select a block of code.
+   - Right-click and choose one of the **Ollama AI** options (e.g. *Explain Code*).
+   - The sidebar will automatically focus and stream the analysis on your selection.
+2. **One-Click Inline Insertion**:
+   - In any generated response within the chat sidebar, click the **Insert** button on the code block's header.
+   - This will paste the code snippet directly back into your active text editor at the current cursor position.
+3. **VS Code Native Inline Chat (`Ctrl + I` / `Cmd + I`)**:
+   - For direct inline code generation or edits in the editor workspace, press `Ctrl + I` (Windows/Linux) or `Cmd + I` (macOS).
+   - Use a compatible local LLM connector extension (such as *Continue*) linked to your Ollama local server (`http://localhost:11434`) to use VS Code's native inline editing experience.
 
 ## License
 
-MIT License
+Licensed under the MIT License.

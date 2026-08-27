@@ -20,13 +20,99 @@
     "commands": [
       {
         "command": "ollama-vscode-chat.start",
-        "title": "Ollama Chat"
+        "title": "Ollama: Open Chat Panel"
       },
       {
-        "command": "ollama-vscode-chat.download",
-        "title": "Ollama Download New Model"
+        "command": "ollama-vscode-chat.focusSidebar",
+        "title": "Ollama: Focus Chat Sidebar"
+      },
+      {
+        "command": "ollama-vscode-chat.explainCode",
+        "title": "Ollama AI: Explain Code"
+      },
+      {
+        "command": "ollama-vscode-chat.findBugs",
+        "title": "Ollama AI: Find Bugs & Optimize"
+      },
+      {
+        "command": "ollama-vscode-chat.generateTests",
+        "title": "Ollama AI: Generate Unit Tests"
+      },
+      {
+        "command": "ollama-vscode-chat.documentCode",
+        "title": "Ollama AI: Write Documentation"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ollama-sidebar-container",
+          "title": "Ollama AI",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "ollama-sidebar-container": [
+        {
+          "type": "webview",
+          "id": "ollama.chatView",
+          "name": "Ollama Chat",
+          "visibility": "visible"
+        }
+      ]
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "command": "ollama-vscode-chat.explainCode",
+          "when": "editorHasSelection",
+          "group": "ollama-ai@1"
+        },
+        {
+          "command": "ollama-vscode-chat.findBugs",
+          "when": "editorHasSelection",
+          "group": "ollama-ai@2"
+        },
+        {
+          "command": "ollama-vscode-chat.generateTests",
+          "when": "editorHasSelection",
+          "group": "ollama-ai@3"
+        },
+        {
+          "command": "ollama-vscode-chat.documentCode",
+          "when": "editorHasSelection",
+          "group": "ollama-ai@4"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Ollama VSCode Chat Configuration",
+      "properties": {
+        "ollama.apiUrl": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "The endpoint URL for the Ollama API"
+        },
+        "ollama.systemPrompt": {
+          "type": "string",
+          "default": "You are a helpful, expert AI software developer. Provide clear, correct, and well-structured code explanations and modifications.",
+          "description": "Default system instructions for the LLM"
+        },
+        "ollama.temperature": {
+          "type": "number",
+          "default": 0.7,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Controls model creativity/randomness (0.0 is deterministic, 1.0 is highly creative)"
+        },
+        "ollama.contextLength": {
+          "type": "integer",
+          "default": 4096,
+          "description": "Maximum context length in tokens for the model"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
